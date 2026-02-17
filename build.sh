@@ -10,7 +10,11 @@ echo "╚═══════════════════════�
 REPO="CodeShrey29/Personal-AiCloud-"
 TAG="build-latest"
 TARBALL="cloudai-binaries.tar.gz"
-INSTALL_DIR="/opt/cloudai"
+APP_ROOT="${APP_ROOT:-${RENDER_PROJECT_ROOT:-$PWD}}"
+INSTALL_DIR="${INSTALL_DIR:-$APP_ROOT/.cloudai}"
+SEAHUB_DIR="${SEAHUB_DIR:-$APP_ROOT/.seahub}"
+SQL_DIR="${SQL_DIR:-$APP_ROOT/.sql}"
+SSL_CA_PATH="${SSL_CA_PATH:-$INSTALL_DIR/certs/ca.pem}"
 
 # ── 1. Download pre-built binaries from GitHub Release ──
 echo "=== [1/5] Downloading pre-built binaries ==="
@@ -60,7 +64,7 @@ echo "  ✓ Binaries downloaded and extracted"
 
 # ── 2. Install binaries and libraries ──
 echo "=== [2/5] Installing binaries and libraries ==="
-mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/lib"
+mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/lib" "$INSTALL_DIR/certs"
 
 # Copy binaries
 cp /tmp/cloudai-binaries/bin/* "$INSTALL_DIR/bin/"
@@ -84,9 +88,9 @@ echo "  ✓ Python packages: $(ls $PYPACKAGES_DIR/)"
 
 # ── 3. Install seahub (web UI) ──
 echo "=== [3/5] Setting up seahub ==="
-mkdir -p /opt/seahub
-cp -a Intelligent-cloud-web-end/. /opt/seahub/
-echo "  ✓ Seahub copied to /opt/seahub"
+mkdir -p "$SEAHUB_DIR"
+cp -a Intelligent-cloud-web-end/. "$SEAHUB_DIR/"
+echo "  ✓ Seahub copied to $SEAHUB_DIR"
 
 # ── 4. Install Python dependencies ──
 echo "=== [4/5] Installing Python dependencies ==="
@@ -109,19 +113,18 @@ mkdir -p /data/seafile-data/storage/blocks \
          /data/pids
 
 # Copy WSGI proxy (routes /seafhttp to fileserver, everything else to seahub)
-cp wsgi_proxy.py /opt/wsgi_proxy.py
+cp wsgi_proxy.py "$APP_ROOT/wsgi_proxy.py"
 
 # Copy SQL scripts
-mkdir -p /opt/sql
-cp -a Intelligent-cloud-core/scripts/sql/. /opt/sql/ 2>/dev/null || true
+mkdir -p "$SQL_DIR"
+cp -a Intelligent-cloud-core/scripts/sql/. "$SQL_DIR/" 2>/dev/null || true
 
 # Copy SSL cert for MySQL
-mkdir -p /etc/ssl/mysql
-cp ca.pem /etc/ssl/mysql/ca.pem 2>/dev/null || echo "  ⚠ ca.pem not found (set up SSL cert manually)"
+cp ca.pem "$SSL_CA_PATH" 2>/dev/null || echo "  ⚠ ca.pem not found (set up SSL cert manually)"
 
 # Copy start script
-cp start.sh /opt/cloudai/start.sh 2>/dev/null || true
-chmod +x /opt/cloudai/start.sh 2>/dev/null || true
+cp start.sh "$INSTALL_DIR/start.sh" 2>/dev/null || true
+chmod +x "$INSTALL_DIR/start.sh" 2>/dev/null || true
 
 # Cleanup
 rm -rf /tmp/cloudai-binaries /tmp/${TARBALL}
@@ -136,5 +139,6 @@ echo "Installed:"
 echo "  Binaries: $INSTALL_DIR/bin/"
 echo "  Libraries: $INSTALL_DIR/lib/"
 echo "  Python pkgs: $PYPACKAGES_DIR/"
-echo "  Seahub: /opt/seahub/"
-echo "  SQL: /opt/sql/"
+echo "  Seahub: $SEAHUB_DIR/"
+echo "  SQL: $SQL_DIR/"
+echo "  SSL CA: $SSL_CA_PATH"
