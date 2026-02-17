@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: starter
     buildCommand: chmod +x ./build.sh && ./build.sh
-    startCommand: /opt/cloudai/start.sh
+    startCommand: ./.cloudai/start.sh
     disk:
       name: cloudai-data
       mountPath: /data

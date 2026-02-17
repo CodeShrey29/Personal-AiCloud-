@@ -10,20 +10,61 @@ echo "╚═══════════════════════�
 REPO="CodeShrey29/Personal-AiCloud-"
 TAG="build-latest"
 TARBALL="cloudai-binaries.tar.gz"
-INSTALL_DIR="/opt/cloudai"
+APP_ROOT="${APP_ROOT:-${RENDER_PROJECT_ROOT:-$PWD}}"
+INSTALL_DIR="${INSTALL_DIR:-$APP_ROOT/.cloudai}"
+SEAHUB_DIR="${SEAHUB_DIR:-$APP_ROOT/.seahub}"
+SQL_DIR="${SQL_DIR:-$APP_ROOT/.sql}"
+SSL_CA_PATH="${SSL_CA_PATH:-$INSTALL_DIR/certs/ca.pem}"
 
 # ── 1. Download pre-built binaries from GitHub Release ──
 echo "=== [1/5] Downloading pre-built binaries ==="
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${TARBALL}"
 echo "  URL: $DOWNLOAD_URL"
 mkdir -p /tmp/cloudai-binaries
-curl -fsSL "$DOWNLOAD_URL" -o "/tmp/${TARBALL}"
+
+download_release_asset() {
+  local output_file="$1"
+
+  # First try the public release URL (works for public repositories).
+  if curl -fL --retry 3 --retry-delay 2 "$DOWNLOAD_URL" -o "$output_file"; then
+    return 0
+  fi
+
+  # Fallback for private repositories: use a GitHub token if provided.
+  local gh_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  if [ -z "$gh_token" ]; then
+    echo "  ✗ Failed to download binaries from public release URL."
+    echo "    If this repository is private, set GITHUB_TOKEN (or GH_TOKEN) in your deploy environment."
+    return 1
+  fi
+
+  echo "  Public download failed; retrying with GitHub API token authentication..."
+  local releases_api="https://api.github.com/repos/${REPO}/releases/tags/${TAG}"
+  local asset_url
+
+  asset_url=$(curl -fsSL \
+    -H "Authorization: Bearer ${gh_token}" \
+    -H "Accept: application/vnd.github+json" \
+    "$releases_api" | python -c "import json,sys; data=json.load(sys.stdin); print(next((a['url'] for a in data.get('assets', []) if a.get('name') == '${TARBALL}'), ''))")
+
+  if [ -z "$asset_url" ]; then
+    echo "  ✗ Release tag '${TAG}' found, but asset '${TARBALL}' was not present."
+    return 1
+  fi
+
+  curl -fsSL \
+    -H "Authorization: Bearer ${gh_token}" \
+    -H "Accept: application/octet-stream" \
+    "$asset_url" -o "$output_file"
+}
+
+download_release_asset "/tmp/${TARBALL}"
 tar -xzf "/tmp/${TARBALL}" -C /tmp/cloudai-binaries
 echo "  ✓ Binaries downloaded and extracted"
 
 # ── 2. Install binaries and libraries ──
 echo "=== [2/5] Installing binaries and libraries ==="
-mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/lib"
+mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/lib" "$INSTALL_DIR/certs"
 
 # Copy binaries
 cp /tmp/cloudai-binaries/bin/* "$INSTALL_DIR/bin/"
@@ -47,9 +88,9 @@ echo "  ✓ Python packages: $(ls $PYPACKAGES_DIR/)"
 
 # ── 3. Install seahub (web UI) ──
 echo "=== [3/5] Setting up seahub ==="
-mkdir -p /opt/seahub
-cp -a Intelligent-cloud-web-end/. /opt/seahub/
-echo "  ✓ Seahub copied to /opt/seahub"
+mkdir -p "$SEAHUB_DIR"
+cp -a Intelligent-cloud-web-end/. "$SEAHUB_DIR/"
+echo "  ✓ Seahub copied to $SEAHUB_DIR"
 
 # ── 4. Install Python dependencies ──
 echo "=== [4/5] Installing Python dependencies ==="
@@ -72,19 +113,18 @@ mkdir -p /data/seafile-data/storage/blocks \
          /data/pids
 
 # Copy WSGI proxy (routes /seafhttp to fileserver, everything else to seahub)
-cp wsgi_proxy.py /opt/wsgi_proxy.py
+cp wsgi_proxy.py "$APP_ROOT/wsgi_proxy.py"
 
 # Copy SQL scripts
-mkdir -p /opt/sql
-cp -a Intelligent-cloud-core/scripts/sql/. /opt/sql/ 2>/dev/null || true
+mkdir -p "$SQL_DIR"
+cp -a Intelligent-cloud-core/scripts/sql/. "$SQL_DIR/" 2>/dev/null || true
 
 # Copy SSL cert for MySQL
-mkdir -p /etc/ssl/mysql
-cp ca.pem /etc/ssl/mysql/ca.pem 2>/dev/null || echo "  ⚠ ca.pem not found (set up SSL cert manually)"
+cp ca.pem "$SSL_CA_PATH" 2>/dev/null || echo "  ⚠ ca.pem not found (set up SSL cert manually)"
 
 # Copy start script
-cp start.sh /opt/cloudai/start.sh 2>/dev/null || true
-chmod +x /opt/cloudai/start.sh 2>/dev/null || true
+cp start.sh "$INSTALL_DIR/start.sh" 2>/dev/null || true
+chmod +x "$INSTALL_DIR/start.sh" 2>/dev/null || true
 
 # Cleanup
 rm -rf /tmp/cloudai-binaries /tmp/${TARBALL}
@@ -99,5 +139,6 @@ echo "Installed:"
 echo "  Binaries: $INSTALL_DIR/bin/"
 echo "  Libraries: $INSTALL_DIR/lib/"
 echo "  Python pkgs: $PYPACKAGES_DIR/"
-echo "  Seahub: /opt/seahub/"
-echo "  SQL: /opt/sql/"
+echo "  Seahub: $SEAHUB_DIR/"
+echo "  SQL: $SQL_DIR/"
+echo "  SSL CA: $SSL_CA_PATH"
