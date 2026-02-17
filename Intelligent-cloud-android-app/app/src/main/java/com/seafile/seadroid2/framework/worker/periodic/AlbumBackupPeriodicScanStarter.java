@@ -1,0 +1,120 @@
+package com.seafile.seadroid2.framework.worker.periodic;
+
+import android.content.Context;
+import android.text.TextUtils;
+
+import androidx.annotation.NonNull;
+import androidx.work.Worker;
+import androidx.work.WorkerParameters;
+
+import com.blankj.utilcode.util.NetworkUtils;
+import com.seafile.seadroid2.account.Account;
+import com.seafile.seadroid2.account.SupportAccountManager;
+import com.seafile.seadroid2.bus.BusAction;
+import com.seafile.seadroid2.bus.BusHelper;
+import com.seafile.seadroid2.enums.FeatureDataSource;
+import com.seafile.seadroid2.framework.datastore.sp_livedata.AlbumBackupSharePreferenceHelper;
+import com.seafile.seadroid2.framework.service.BackupThreadExecutor;
+import com.seafile.seadroid2.framework.service.scan.AlbumScanHelper;
+import com.seafile.seadroid2.framework.util.SafeLogs;
+import com.seafile.seadroid2.framework.worker.BackgroundJobManagerImpl;
+import com.seafile.seadroid2.framework.worker.TransferEvent;
+import com.seafile.seadroid2.ui.camera_upload.CameraUploadManager;
+import com.seafile.seadroid2.ui.folder_backup.RepoConfig;
+
+import java.util.UUID;
+
+public class AlbumBackupPeriodicScanStarter extends Worker {
+    public static final String TAG = "AlbumBackupPeriodicScanStarter";
+    public static final UUID UID = UUID.nameUUIDFromBytes(AlbumBackupPeriodicScanStarter.class.getSimpleName().getBytes());
+    // @FIXME fix this
+    private static volatile boolean isWorkerRunning = false;
+
+    private static void setIsRunning(boolean running) {
+        isWorkerRunning = running;
+    }
+
+    public static boolean isIsWorkerRunning() {
+        return isWorkerRunning;
+    }
+
+    public AlbumBackupPeriodicScanStarter(@NonNull Context context, @NonNull WorkerParameters workerParams) {
+        super(context, workerParams);
+    }
+
+    private static boolean canExc() {
+        boolean isRunning = BackupThreadExecutor.getInstance().isAlbumBackupRunning();
+        return !isRunning;
+    }
+
+    @NonNull
+    @Override
+    public Result doWork() {
+        SafeLogs.d(TAG, "周期性相册扫描 Worker 启动");
+
+        if (!canExc()) {
+            SafeLogs.e(TAG, "doWork()", "The album scan task was not started, because the album backup thread is running");
+            return returnSuccess();
+        }
+
+        setIsRunning(true);
+
+        Account account = SupportAccountManager.getInstance().getCurrentAccount();
+        if (account == null) {
+            return returnSuccess();
+        }
+
+        boolean isEnable = AlbumBackupSharePreferenceHelper.readBackupSwitch();
+        if (!isEnable) {
+            SafeLogs.d(TAG, "doWork()", "the album scan task was not started, because the switch is off");
+            return returnSuccess();
+        }
+
+        Account backupAccount = CameraUploadManager.getInstance().getCameraAccount();
+        if (backupAccount == null) {
+            SafeLogs.d(TAG, "doWork()", "the album scan task was not started, because the backup account is null");
+            return returnSuccess();
+        }
+
+        RepoConfig repoConfig = AlbumBackupSharePreferenceHelper.readRepoConfig();
+        if (repoConfig == null || TextUtils.isEmpty(repoConfig.getRepoId())) {
+            SafeLogs.d(TAG, "doWork()", "the album scan task was not started, because the repoConfig is null");
+            return returnSuccess();
+        }
+
+        if (!NetworkUtils.isConnected()) {
+            SafeLogs.d(TAG, "network is not connected");
+            return returnSuccess();
+        }
+
+        boolean isAllowDataPlan = AlbumBackupSharePreferenceHelper.readAllowDataPlanSwitch();
+        if (!isAllowDataPlan) {
+            if (NetworkUtils.isMobileData()) {
+                SafeLogs.e(TAG, "data plan is not allowed", "current network type: ", NetworkUtils.getNetworkType().name());
+                return returnSuccess();
+            }
+
+            SafeLogs.d(TAG, "data plan is not allowed", "current network type: ", NetworkUtils.getNetworkType().name());
+        } else {
+            SafeLogs.d(TAG, "data plan is allowed", "current network type: ", NetworkUtils.getNetworkType().name());
+        }
+
+        SafeLogs.d(TAG, "doWork()", "start scan");
+
+        boolean result = AlbumScanHelper.readMediaResult(getApplicationContext(), account, repoConfig);
+
+        if (result) {
+            BackgroundJobManagerImpl.getInstance().startMediaBackupChain(true);
+            SafeLogs.e(TAG, "doWork()", "new album");
+        } else {
+            SafeLogs.d(TAG, "doWork()", "no new album");
+        }
+        return returnSuccess();
+    }
+
+    protected Result returnSuccess() {
+        setIsRunning(false);
+        return Result.success();
+    }
+
+}
