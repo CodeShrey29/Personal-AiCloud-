@@ -13,7 +13,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-libmysqlclient-dev libldap2-dev libsasl2-dev \
     libjpeg-dev zlib1g-dev libcairo2-dev libgirepository1.0-dev \
     valac cmake libzdb-dev \
+    libhiredis-dev libjwt-dev libargon2-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# ── Build libevhtp (not available as a package on 22.04) ──
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/Yellow-Camper/libevhtp.git \
+    && cd libevhtp \
+    && mkdir build && cd build \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DEVHTP_DISABLE_SSL=OFF -DEVHTP_BUILD_SHARED=ON .. \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig
 
 # ── Build libsearpc (required dependency) ──
 WORKDIR /build
@@ -22,21 +33,18 @@ RUN git clone --depth 1 https://github.com/haiwen/libsearpc.git \
     && ./autogen.sh \
     && ./configure --prefix=/usr \
     && make -j$(nproc) \
-    && make install
+    && make install \
+    && ldconfig
 
-# ── Build ccnet-server ──
-RUN git clone --depth 1 https://github.com/haiwen/ccnet-server.git \
-    && cd ccnet-server \
-    && ./autogen.sh \
-    && ./configure --prefix=/usr --with-mysql=/usr/bin/mysql_config --enable-python \
-    && make -j$(nproc) \
-    && make install
-
-# ── Build seafile-server core (your Intelligent-cloud-core) ──
+# ── Build seafile-server core (Intelligent-cloud-core) ──
+# ccnet is merged into seafile-server in this version — no separate ccnet-server build needed
 COPY Intelligent-cloud-core /build/seafile-server
 WORKDIR /build/seafile-server
 RUN ./autogen.sh \
-    && ./configure --prefix=/usr --with-mysql=/usr/bin/mysql_config --enable-python \
+    && ./configure --prefix=/usr \
+       --with-mysql=/usr/bin/mysql_config \
+       --enable-python \
+       --disable-fuse \
     && make -j$(nproc) \
     && make install
 
@@ -54,29 +62,29 @@ ENV PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-setuptools python3-dev \
     libglib2.0-0 libssl3 libevent-2.1-7 libcurl4 \
-    libsqlite3-0 libjansson4 libarchive13 libfuse2 \
+    libsqlite3-0 libjansson4 libarchive13 \
     libmysqlclient21 libuuid1 \
     libjpeg-turbo8 zlib1g libcairo2 \
     libldap-2.5-0 libsasl2-2 \
+    libhiredis0.14 libjwt0 libargon2-1 \
     procps sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Copy built binaries and libraries ──
 COPY --from=builder /usr/lib/libsearpc* /usr/lib/
 COPY --from=builder /usr/lib/libseafile* /usr/lib/
-COPY --from=builder /usr/lib/libccnet* /usr/lib/
+COPY --from=builder /usr/lib/libevhtp* /usr/lib/
 COPY --from=builder /usr/lib/python3*/dist-packages/ /usr/lib/python3/dist-packages/
 COPY --from=builder /usr/bin/seaf-server /usr/bin/
 COPY --from=builder /usr/bin/seafile-controller /usr/bin/
 COPY --from=builder /usr/bin/fileserver /usr/bin/
-COPY --from=builder /usr/bin/ccnet-server /usr/bin/
 RUN ldconfig
 
 # ── Extra Python dependencies ──
 COPY requirements.txt /tmp/extra-requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/extra-requirements.txt
 
-# ── Copy seahub (your Intelligent-cloud-web-end) ──
+# ── Copy seahub (Intelligent-cloud-web-end) ──
 COPY Intelligent-cloud-web-end /opt/seahub
 WORKDIR /opt/seahub
 
