@@ -51,6 +51,23 @@ RUN ./autogen.sh \
 WORKDIR /build/seafile-server/fileserver
 RUN go build -o /usr/bin/fileserver .
 
+# ── Gather all Python packages into one directory for easy COPY ──
+RUN mkdir -p /pypackages \
+    && find /usr/lib/python3 /usr/lib/python3.10 /usr/local/lib/python3.10 /usr/local/lib/python3 \
+       -maxdepth 2 -name "dist-packages" -exec cp -an {}/* /pypackages/ \; 2>/dev/null; \
+    echo "=== Verifying Python packages ===" \
+    && test -f /pypackages/seaserv/__init__.py && echo "  seaserv: OK" \
+    && test -f /pypackages/seafile/__init__.py && echo "  seafile: OK" \
+    && test -d /pypackages/pysearpc && echo "  pysearpc: OK"
+
+# ── Gather built native libs to a known path ──
+RUN mkdir -p /built-libs && \
+    cp -a /usr/lib/libsearpc* /built-libs/ 2>/dev/null; \
+    cp -a /usr/lib/libseafile* /built-libs/ 2>/dev/null; \
+    cp -a /usr/lib/x86_64-linux-gnu/libsearpc* /built-libs/ 2>/dev/null; \
+    cp -a /usr/lib/x86_64-linux-gnu/libseafile* /built-libs/ 2>/dev/null; \
+    echo "Libraries gathered:" && ls -la /built-libs/
+
 # ────────────────────────────────────────────────────────────
 FROM ubuntu:22.04
 
@@ -68,16 +85,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-turbo8 zlib1g libcairo2 \
     libldap-2.5-0 libsasl2-2 \
     libhiredis0.14 libjwt0 libargon2-1 \
+    nginx \
+    default-mysql-client \
     procps sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Copy built binaries and libraries ──
-COPY --from=builder /usr/lib/libsearpc* /usr/lib/
-COPY --from=builder /usr/lib/libseafile* /usr/lib/
-COPY --from=builder /usr/lib/python3*/dist-packages/ /usr/lib/python3/dist-packages/
+COPY --from=builder /built-libs/ /usr/lib/
 COPY --from=builder /usr/bin/seaf-server /usr/bin/
 COPY --from=builder /usr/bin/seafile-controller /usr/bin/
 COPY --from=builder /usr/bin/fileserver /usr/bin/
+
+# ── Copy ALL Python packages (seaserv, seafile, pysearpc) ──
+COPY --from=builder /pypackages/ /usr/lib/python3/dist-packages/
 RUN ldconfig
 
 # ── Extra Python dependencies ──

@@ -13,6 +13,16 @@ export SEAFILE_RPC_PIPE_PATH=$TOPDIR/seafile-data
 export SEAFILE_LOG_TO_STDOUT=true
 export PYTHONPATH=$SEAHUB_DIR:$SEAHUB_DIR/thirdpart:/usr/lib/python3/dist-packages:$PYTHONPATH
 
+# ── Cleanup on exit ──
+cleanup() {
+    echo "Shutting down..."
+    kill $(cat $TOPDIR/pids/seafile.pid 2>/dev/null) 2>/dev/null
+    kill $(cat $TOPDIR/pids/fileserver.pid 2>/dev/null) 2>/dev/null
+    nginx -s stop 2>/dev/null
+    exit 0
+}
+trap cleanup SIGTERM SIGINT
+
 # ── First-time setup ────────────────────────────────────────
 if [ ! -f "$TOPDIR/conf/seafile.conf" ]; then
     echo "=== First-time Seafile setup ==="
@@ -27,6 +37,15 @@ if [ ! -f "$TOPDIR/conf/seafile.conf" ]; then
     DB_CCNET="${DB_NAME_CCNET:-ccnet_db}"
     DB_SEAFILE="${DB_NAME_SEAFILE:-seafile_db}"
     DB_SEAHUB="${DB_NAME_SEAHUB:-seahub_db}"
+
+    # ── Initialize ccnet and seafile DB schemas ──
+    echo "Initializing database schemas..."
+    mysql -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" -p"${DB_PASS}" \
+        --ssl-ca=/etc/ssl/mysql/ca.pem \
+        "${DB_CCNET}" < /opt/sql/mysql/ccnet.sql 2>&1 || echo "ccnet schema note: may already exist"
+    mysql -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" -p"${DB_PASS}" \
+        --ssl-ca=/etc/ssl/mysql/ca.pem \
+        "${DB_SEAFILE}" < /opt/sql/mysql/seafile.sql 2>&1 || echo "seafile schema note: may already exist"
 
     # ── ccnet.conf ──
     cat > $TOPDIR/conf/ccnet.conf << EOF
@@ -104,7 +123,7 @@ PYEOF
 
     # ── gunicorn.conf.py ──
     cat > $TOPDIR/conf/gunicorn.conf.py << PYEOF
-bind = "0.0.0.0:${PORT}"
+bind = "0.0.0.0:8000"
 workers = 3
 timeout = 1200
 limit_request_line = 8190
@@ -117,12 +136,6 @@ PYEOF
     mkdir -p $TOPDIR/seafile-data/storage/fs
     mkdir -p $TOPDIR/seafile-data/tmpfiles
     mkdir -p $TOPDIR/seafile-data/httptemp
-
-    # ── Run seahub migrations ──
-    echo "Running database migrations..."
-    export DJANGO_SETTINGS_MODULE=seahub.settings
-    cd $SEAHUB_DIR
-    python3 manage.py migrate --noinput 2>&1 || echo "Migration note: will retry"
 
     # ── Create admin user ──
     ADMIN_EMAIL="${SEAFILE_ADMIN_EMAIL:-admin@seafile.local}"
@@ -147,7 +160,7 @@ fi
 
 # ── Always update gunicorn port (Render may change it) ──
 cat > $TOPDIR/conf/gunicorn.conf.py << PYEOF
-bind = "0.0.0.0:${PORT}"
+bind = "0.0.0.0:8000"
 workers = 3
 timeout = 1200
 limit_request_line = 8190
@@ -161,6 +174,45 @@ export SEAFILE_MYSQL_DB_CCNET_DB_NAME="${DB_NAME_CCNET:-ccnet_db}"
 export SEAFILE_MYSQL_DB_SEAFILE_DB_NAME="${DB_NAME_SEAFILE:-seafile_db}"
 export JWT_PRIVATE_KEY=$(grep JWT_PRIVATE_KEY $TOPDIR/conf/seahub_settings.py | head -1 | cut -d"'" -f2)
 
+# ── Run database migrations (every boot, to catch upgrades) ──
+echo "Running database migrations..."
+export DJANGO_SETTINGS_MODULE=seahub.settings
+cd $SEAHUB_DIR
+python3 manage.py migrate --noinput 2>&1 || echo "Migration note: will retry on next boot"
+
+# ── Generate nginx config (routes $PORT → gunicorn:8000 + fileserver:8082) ──
+cat > /etc/nginx/conf.d/seafile.conf << NGINXEOF
+server {
+    listen ${PORT};
+    server_name _;
+    client_max_body_size 10g;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 1200s;
+    }
+
+    location /seafhttp {
+        rewrite ^/seafhttp(.*)\$ \$1 break;
+        proxy_pass http://127.0.0.1:8082;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_read_timeout 1200s;
+        proxy_request_buffering off;
+    }
+
+    location /media {
+        alias /opt/seahub/media;
+    }
+}
+NGINXEOF
+rm -f /etc/nginx/sites-enabled/default
+
 # ── Start seaf-server (C daemon, background) ──
 # seaf-server creates seafile.sock in the directory given by -p (or -d if -p is absent)
 echo "Starting seaf-server..."
@@ -173,9 +225,17 @@ echo "Starting fileserver..."
 fileserver -F $TOPDIR/conf -d $TOPDIR/seafile-data -l $TOPDIR/logs/fileserver.log -p $TOPDIR/seafile-data -P $TOPDIR/pids/fileserver.pid &
 sleep 1
 
-# ── Start seahub (gunicorn, FOREGROUND) ──
-echo "☁️  Starting Cloudai on port $PORT ..."
+# ── Start nginx (reverse proxy, background) ──
+echo "Starting nginx reverse proxy on port $PORT..."
+nginx
+
+# ── Start seahub (gunicorn, background) ──
+echo "☁️  Starting Cloudai (nginx on port $PORT, gunicorn on 8000)..."
 cd $SEAHUB_DIR
-exec gunicorn seahub.wsgi:application \
+gunicorn seahub.wsgi:application \
     -c $TOPDIR/conf/gunicorn.conf.py \
-    --preload
+    --preload &
+GUNICORN_PID=$!
+
+# ── Wait for any process to exit ──
+wait $GUNICORN_PID
