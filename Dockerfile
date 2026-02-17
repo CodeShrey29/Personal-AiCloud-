@@ -55,8 +55,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-setuptools python3-dev \
     libglib2.0-0 libssl3 libevent-2.1-7 libcurl4 \
     libsqlite3-0 libjansson4 libarchive13 libfuse2 \
-    default-libmysqlclient21 libuuid1 \
-    libjpeg8 zlib1g libcairo2 \
+    libmysqlclient21 libuuid1 \
+    libjpeg-turbo8 zlib1g libcairo2 \
     libldap-2.5-0 libsasl2-2 \
     procps sqlite3 \
     && rm -rf /var/lib/apt/lists/*
