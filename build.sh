@@ -7,7 +7,7 @@ echo "╔═══════════════════════�
 echo "║      Cloudai — Render Native Build Script        ║"
 echo "╚══════════════════════════════════════════════════╝"
 
-REPO="codeshrey29/personal-aicloud-"
+REPO="CodeShrey29/Personal-AiCloud-"
 TAG="build-latest"
 TARBALL="cloudai-binaries.tar.gz"
 INSTALL_DIR="/opt/cloudai"
