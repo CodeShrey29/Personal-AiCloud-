@@ -40,6 +40,9 @@ USER = ${DB_USER}
 PASSWD = ${DB_PASS}
 DB = ${DB_CCNET}
 CONNECTION_CHARSET = utf8
+USE_SSL = true
+SKIP_VERIFY = false
+CA_PATH = /etc/ssl/mysql/ca.pem
 EOF
 
     # ── seafile.conf ──
@@ -56,6 +59,9 @@ user = ${DB_USER}
 password = ${DB_PASS}
 db_name = ${DB_SEAFILE}
 connection_charset = utf8
+use_ssl = true
+skip_verify = false
+ca_path = /etc/ssl/mysql/ca.pem
 EOF
 
     # ── seahub_settings.py ──
@@ -76,7 +82,10 @@ DATABASES = {
         'PASSWORD': '${DB_PASS}',
         'HOST': '${DB_HOST}',
         'PORT': '${DB_PORT}',
-        'OPTIONS': {'charset': 'utf8mb4'},
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'ssl': {'ca': '/etc/ssl/mysql/ca.pem'},
+        },
     }
 }
 

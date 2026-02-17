@@ -72,6 +72,10 @@ COPY --from=builder /usr/bin/fileserver /usr/bin/
 COPY --from=builder /usr/bin/ccnet-server /usr/bin/
 RUN ldconfig
 
+# ── Extra Python dependencies ──
+COPY requirements.txt /tmp/extra-requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/extra-requirements.txt
+
 # ── Copy seahub (your Intelligent-cloud-web-end) ──
 COPY Intelligent-cloud-web-end /opt/seahub
 WORKDIR /opt/seahub
@@ -87,6 +91,9 @@ COPY Intelligent-cloud-core/scripts/sql /opt/sql
 
 # ── Data directories ──
 RUN mkdir -p /data/seafile-data /data/ccnet /data/conf /data/logs /data/pids
+
+# ── Copy SSL cert for MySQL ──
+COPY ca.pem /etc/ssl/mysql/ca.pem
 
 # ── Copy entrypoint ──
 COPY docker-entrypoint.sh /entrypoint.sh
