@@ -17,7 +17,44 @@ echo "=== [1/5] Downloading pre-built binaries ==="
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${TARBALL}"
 echo "  URL: $DOWNLOAD_URL"
 mkdir -p /tmp/cloudai-binaries
-curl -fsSL "$DOWNLOAD_URL" -o "/tmp/${TARBALL}"
+
+download_release_asset() {
+  local output_file="$1"
+
+  # First try the public release URL (works for public repositories).
+  if curl -fL --retry 3 --retry-delay 2 "$DOWNLOAD_URL" -o "$output_file"; then
+    return 0
+  fi
+
+  # Fallback for private repositories: use a GitHub token if provided.
+  local gh_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  if [ -z "$gh_token" ]; then
+    echo "  ✗ Failed to download binaries from public release URL."
+    echo "    If this repository is private, set GITHUB_TOKEN (or GH_TOKEN) in your deploy environment."
+    return 1
+  fi
+
+  echo "  Public download failed; retrying with GitHub API token authentication..."
+  local releases_api="https://api.github.com/repos/${REPO}/releases/tags/${TAG}"
+  local asset_url
+
+  asset_url=$(curl -fsSL \
+    -H "Authorization: Bearer ${gh_token}" \
+    -H "Accept: application/vnd.github+json" \
+    "$releases_api" | python -c "import json,sys; data=json.load(sys.stdin); print(next((a['url'] for a in data.get('assets', []) if a.get('name') == '${TARBALL}'), ''))")
+
+  if [ -z "$asset_url" ]; then
+    echo "  ✗ Release tag '${TAG}' found, but asset '${TARBALL}' was not present."
+    return 1
+  fi
+
+  curl -fsSL \
+    -H "Authorization: Bearer ${gh_token}" \
+    -H "Accept: application/octet-stream" \
+    "$asset_url" -o "$output_file"
+}
+
+download_release_asset "/tmp/${TARBALL}"
 tar -xzf "/tmp/${TARBALL}" -C /tmp/cloudai-binaries
 echo "  ✓ Binaries downloaded and extracted"
 
