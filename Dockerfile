@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential autoconf automake libtool pkg-config \
     python3 python3-dev python3-pip python3-setuptools \
-    libglib2.0-dev libssl-dev libevent-dev libcurl4-openssl-dev \
+    libglib2.0-dev libglib2.0-dev-bin libssl-dev libevent-dev libcurl4-openssl-dev \
     libsqlite3-dev libjansson-dev libarchive-dev \
     uuid-dev intltool libfuse-dev \
     wget curl git golang-go ca-certificates \
@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev zlib1g-dev libcairo2-dev libgirepository1.0-dev \
     valac cmake libzdb-dev \
     libhiredis-dev libjwt-dev libargon2-dev \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Build libsearpc (required dependency) ──
@@ -30,13 +31,19 @@ RUN git clone --depth 1 https://github.com/haiwen/libsearpc.git \
 # ccnet is merged into seafile-server in this version — no separate ccnet-server build needed
 COPY Intelligent-cloud-core /build/seafile-server
 WORKDIR /build/seafile-server
-RUN chmod +x autogen.sh configure.ac \
-    && ./autogen.sh \
+
+# Fix Windows CRLF line endings and make scripts executable
+RUN find . -type f \( -name "*.sh" -o -name "*.ac" -o -name "*.am" -o -name "*.in" \
+    -o -name "*.py" -o -name "*.m4" -o -name "*.vala" -o -name "*.c" -o -name "*.h" \
+    -o -name "*.pc.in" -o -name "Makefile*" -o -name "configure*" \) -exec dos2unix {} + \
+    && chmod +x autogen.sh
+
+RUN ./autogen.sh \
     && ./configure --prefix=/usr \
-       --with-mysql=/usr/bin/mysql_config \
        --enable-python \
        --disable-fuse \
        --disable-httpserver \
+       CFLAGS="-Wno-deprecated-declarations" \
     && make -j$(nproc) \
     && make install
 
@@ -80,9 +87,7 @@ COPY Intelligent-cloud-web-end /opt/seahub
 WORKDIR /opt/seahub
 
 # ── Python dependencies for seahub ──
-RUN pip3 install --no-cache-dir \
-    -r requirements.txt \
-    gunicorn==21.2.0 \
+RUN pip3 install --no-cache-dir -r requirements.txt \
     && pip3 install --no-cache-dir future pycryptodome
 
 # ── Copy SQL init scripts ──

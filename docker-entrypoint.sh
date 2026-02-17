@@ -9,6 +9,7 @@ HOSTNAME="${RENDER_EXTERNAL_HOSTNAME:-localhost}"
 export CCNET_CONF_DIR=$TOPDIR/ccnet
 export SEAFILE_CONF_DIR=$TOPDIR/seafile-data
 export SEAFILE_CENTRAL_CONF_DIR=$TOPDIR/conf
+export SEAFILE_RPC_PIPE_PATH=$TOPDIR/seafile-data
 export SEAFILE_LOG_TO_STDOUT=true
 export PYTHONPATH=$SEAHUB_DIR:$SEAHUB_DIR/thirdpart:/usr/lib/python3/dist-packages:$PYTHONPATH
 
@@ -161,13 +162,15 @@ export SEAFILE_MYSQL_DB_SEAFILE_DB_NAME="${DB_NAME_SEAFILE:-seafile_db}"
 export JWT_PRIVATE_KEY=$(grep JWT_PRIVATE_KEY $TOPDIR/conf/seahub_settings.py | head -1 | cut -d"'" -f2)
 
 # ── Start seaf-server (C daemon, background) ──
+# seaf-server creates seafile.sock in the directory given by -p (or -d if -p is absent)
 echo "Starting seaf-server..."
-seaf-server -c $TOPDIR/ccnet -d $TOPDIR/seafile-data -F $TOPDIR/conf -l $TOPDIR/logs/seafile.log -P $TOPDIR/pids/seafile.pid &
+seaf-server -c $TOPDIR/ccnet -d $TOPDIR/seafile-data -F $TOPDIR/conf -f -l $TOPDIR/logs/seafile.log -P $TOPDIR/pids/seafile.pid -p $TOPDIR/seafile-data &
 sleep 2
 
 # ── Start Go fileserver (background) ──
+# fileserver -p expects a DIRECTORY; it appends /seafile.sock internally
 echo "Starting fileserver..."
-fileserver -F $TOPDIR/conf -d $TOPDIR/seafile-data -l $TOPDIR/logs/fileserver.log -p $TOPDIR/ccnet/seafile.sock -P $TOPDIR/pids/fileserver.pid &
+fileserver -F $TOPDIR/conf -d $TOPDIR/seafile-data -l $TOPDIR/logs/fileserver.log -p $TOPDIR/seafile-data -P $TOPDIR/pids/fileserver.pid &
 sleep 1
 
 # ── Start seahub (gunicorn, FOREGROUND) ──
