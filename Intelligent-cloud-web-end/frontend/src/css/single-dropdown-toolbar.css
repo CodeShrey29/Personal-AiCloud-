@@ -1,0 +1,22 @@
+.sf-dropdown-combined-toggle {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  color: var(--bs-icon-color);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.sf-dropdown-combined-toggle:active,
+.sf-dropdown-combined-toggle:hover {
+  color: var(--bs-icon-color)!important;
+  background: var(--bs-hover-bg)!important;
+}
+
+.sf-dropdown-combined-toggle .new-icon {
+  margin-right: 2px;
+}
+
+.sf-dropdown-combined-toggle .seafile-multicolor-icon-down {
+  transform: translateY(1px);
+}

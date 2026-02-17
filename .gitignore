@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+seahub.db
+seafile-data/
+ccnet/

@@ -1,0 +1,9 @@
+.git
+Intelligent-cloud/.git
+Intelligent-cloud-core/.git
+Intelligent-cloud-web-end/.git
+Intelligent-cloud-webdav/.git
+Intelligent-cloud-android-app
+*.md
+.env
+node_modules

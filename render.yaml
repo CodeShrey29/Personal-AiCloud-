@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: cloudai
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    disk:
+      name: cloudai-data
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: RENDER_EXTERNAL_HOSTNAME
+        fromService:
+          type: web
+          name: cloudai
+          property: host
+      # ── MySQL (use free Aiven/TiDB Cloud/PlanetScale) ──
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false
+      - key: DB_NAME_CCNET
+        value: ccnet_db
+      - key: DB_NAME_SEAFILE
+        value: seafile_db
+      - key: DB_NAME_SEAHUB
+        value: seahub_db
+      # ── Seafile admin ──
+      - key: SEAFILE_ADMIN_EMAIL
+        sync: false
+      - key: SEAFILE_ADMIN_PASSWORD
+        sync: false
