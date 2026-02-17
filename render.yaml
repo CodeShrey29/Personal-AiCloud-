@@ -4,6 +4,7 @@ services:
     runtime: docker
     plan: starter
     dockerfilePath: ./Dockerfile
+    dockerCommand: /entrypoint.sh
     disk:
       name: cloudai-data
       mountPath: /data

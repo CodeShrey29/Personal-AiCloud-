@@ -60,6 +60,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # ── Runtime dependencies ──
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-setuptools python3-dev \
+    pkg-config build-essential \
+    default-libmysqlclient-dev libldap2-dev libsasl2-dev \
     libglib2.0-0 libssl3 libevent-2.1-7 libcurl4 \
     libsqlite3-0 libjansson4 libarchive13 \
     libmysqlclient21 libuuid1 \
@@ -87,7 +89,10 @@ COPY Intelligent-cloud-web-end /opt/seahub
 WORKDIR /opt/seahub
 
 # ── Python dependencies for seahub ──
-RUN pip3 install --no-cache-dir -r requirements.txt \
+# Ensure mysqlclient can build even when pkg-config cannot auto-detect lib name.
+RUN export MYSQLCLIENT_CFLAGS="$(mysql_config --cflags)" \
+    && export MYSQLCLIENT_LDFLAGS="$(mysql_config --libs)" \
+    && pip3 install --no-cache-dir -r requirements.txt \
     && pip3 install --no-cache-dir future pycryptodome
 
 # ── Copy SQL init scripts ──
