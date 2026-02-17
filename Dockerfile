@@ -30,7 +30,8 @@ RUN git clone --depth 1 https://github.com/haiwen/libsearpc.git \
 # ccnet is merged into seafile-server in this version — no separate ccnet-server build needed
 COPY Intelligent-cloud-core /build/seafile-server
 WORKDIR /build/seafile-server
-RUN ./autogen.sh \
+RUN chmod +x autogen.sh configure.ac \
+    && ./autogen.sh \
     && ./configure --prefix=/usr \
        --with-mysql=/usr/bin/mysql_config \
        --enable-python \
