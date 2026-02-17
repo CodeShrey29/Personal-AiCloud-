@@ -1,10 +1,10 @@
 services:
   - type: web
     name: cloudai
-    runtime: docker
+    runtime: python
     plan: starter
-    dockerfilePath: ./Dockerfile
-    dockerCommand: /entrypoint.sh
+    buildCommand: chmod +x ./build.sh && ./build.sh
+    startCommand: /opt/cloudai/start.sh
     disk:
       name: cloudai-data
       mountPath: /data
@@ -15,6 +15,8 @@ services:
           type: web
           name: cloudai
           property: host
+      - key: PYTHON_VERSION
+        value: "3.11.6"
       # ── MySQL (use free Aiven/TiDB Cloud/PlanetScale) ──
       - key: DB_HOST
         sync: false
