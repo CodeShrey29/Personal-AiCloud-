@@ -53,9 +53,17 @@ RUN go build -o /usr/bin/fileserver .
 
 # ── Gather all Python packages into one directory for easy COPY ──
 RUN mkdir -p /pypackages \
-    && find /usr/lib/python3 /usr/lib/python3.10 /usr/local/lib/python3.10 /usr/local/lib/python3 \
-       -maxdepth 2 -name "dist-packages" -exec cp -an {}/* /pypackages/ \; 2>/dev/null; \
-    echo "=== Verifying Python packages ===" \
+    && for d in \
+         /usr/lib/python3/dist-packages \
+         /usr/lib/python3.10/dist-packages \
+         /usr/local/lib/python3/dist-packages \
+         /usr/local/lib/python3.10/dist-packages \
+         /usr/lib/python3/site-packages \
+         /usr/local/lib/python3.10/site-packages; do \
+         [ -d "$d" ] && cp -an "$d"/* /pypackages/ 2>/dev/null || true; \
+       done \
+    && echo "=== Verifying Python packages ===" \
+    && ls /pypackages/ \
     && test -f /pypackages/seaserv/__init__.py && echo "  seaserv: OK" \
     && test -f /pypackages/seafile/__init__.py && echo "  seafile: OK" \
     && test -d /pypackages/pysearpc && echo "  pysearpc: OK"
