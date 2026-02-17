@@ -16,16 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libhiredis-dev libjwt-dev libargon2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Build libevhtp (not available as a package on 22.04) ──
-WORKDIR /build
-RUN git clone --depth 1 https://github.com/Yellow-Camper/libevhtp.git \
-    && cd libevhtp \
-    && mkdir build && cd build \
-    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DEVHTP_DISABLE_SSL=OFF -DEVHTP_BUILD_SHARED=ON .. \
-    && make -j$(nproc) \
-    && make install \
-    && ldconfig
-
 # ── Build libsearpc (required dependency) ──
 WORKDIR /build
 RUN git clone --depth 1 https://github.com/haiwen/libsearpc.git \
@@ -45,6 +35,7 @@ RUN ./autogen.sh \
        --with-mysql=/usr/bin/mysql_config \
        --enable-python \
        --disable-fuse \
+       --disable-httpserver \
     && make -j$(nproc) \
     && make install
 
@@ -73,7 +64,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Copy built binaries and libraries ──
 COPY --from=builder /usr/lib/libsearpc* /usr/lib/
 COPY --from=builder /usr/lib/libseafile* /usr/lib/
-COPY --from=builder /usr/lib/libevhtp* /usr/lib/
 COPY --from=builder /usr/lib/python3*/dist-packages/ /usr/lib/python3/dist-packages/
 COPY --from=builder /usr/bin/seaf-server /usr/bin/
 COPY --from=builder /usr/bin/seafile-controller /usr/bin/
