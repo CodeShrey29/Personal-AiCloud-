@@ -89,14 +89,8 @@ COPY Intelligent-cloud-web-end /opt/seahub
 WORKDIR /opt/seahub
 
 # ── Python dependencies for seahub ──
-# Ensure mysqlclient can build even when mysql_config is not available.
-RUN if command -v mysql_config >/dev/null 2>&1; then \
-        export MYSQLCLIENT_CFLAGS="$(mysql_config --cflags)"; \
-        export MYSQLCLIENT_LDFLAGS="$(mysql_config --libs)"; \
-    elif command -v mariadb_config >/dev/null 2>&1; then \
-        export MYSQLCLIENT_CFLAGS="$(mariadb_config --cflags)"; \
-        export MYSQLCLIENT_LDFLAGS="$(mariadb_config --libs)"; \
-    fi \
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip3 install --no-cache-dir mysqlclient==2.2.8 \
     && pip3 install --no-cache-dir -r requirements.txt \
     && pip3 install --no-cache-dir future pycryptodome
 
