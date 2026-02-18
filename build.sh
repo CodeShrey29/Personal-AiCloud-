@@ -158,11 +158,16 @@ if command -v apt-get >/dev/null 2>&1; then
     build-essential \
     pkg-config \
     python3-dev \
+    cargo \
+    rustc \
     default-libmysqlclient-dev \
     libldap2-dev \
     libsasl2-dev \
     libssl-dev \
     libffi-dev \
+    libxml2-dev \
+    libxmlsec1-dev \
+    libxmlsec1-openssl \
     libcairo2-dev \
     libjpeg-dev \
     zlib1g-dev; then
