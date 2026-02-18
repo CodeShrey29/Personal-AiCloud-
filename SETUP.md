@@ -189,6 +189,7 @@ Check the deploy logs in Render dashboard. Common issues:
 - **libsearpc not found**: The Dockerfile clones it from GitHub; check network
 - **MySQL connection refused**: Verify your DB_HOST, DB_USER, DB_PASS are correct
 - **Out of memory during build**: Upgrade to a higher Render plan for build
+- **failed-wheel-build-for-install**: this repo now skips optional `pillow-heif` on Render to avoid native wheel compilation failures. If you need HEIF thumbnails later, install system libs (`libheif-dev`) and add `pillow-heif` back.
 
 ### Can't login after deploy
 
