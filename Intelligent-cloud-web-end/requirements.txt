@@ -25,7 +25,7 @@ captcha==0.7.*
 openpyxl==3.1.*
 Markdown==3.10.*
 bleach==6.3.*
-python-ldap==3.4.*
+python-ldap==3.4.4
 pypinyin==0.55.*
 dnspython==2.8.*
 redis==7.1.*
