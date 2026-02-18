@@ -18,6 +18,7 @@ gunicorn==25.0.*
 mysqlclient==2.2.*
 qrcode==8.2.*
 pillow==12.1.*
+# Optional HEIF support disabled on Render to avoid source wheel builds.
 chardet==5.2.*
 cffi==2.0.*
 captcha==0.7.*
@@ -27,6 +28,5 @@ bleach==6.3.*
 python-ldap==3.4.*
 pypinyin==0.55.*
 dnspython==2.8.*
-pillow-heif==1.2.*
 redis==7.1.*
 cairosvg==2.8.*
