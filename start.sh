@@ -4,10 +4,20 @@
 set -e
 
 TOPDIR=/data
-SEAHUB_DIR=/opt/seahub
-INSTALL_DIR=/opt/cloudai
+APP_ROOT="${APP_ROOT:-${RENDER_PROJECT_ROOT:-$(cd "$(dirname "$0")"/.. && pwd)}}"
+INSTALL_DIR="${INSTALL_DIR:-$APP_ROOT/.cloudai}"
+SEAHUB_DIR="${SEAHUB_DIR:-$APP_ROOT/.seahub}"
+SQL_DIR="${SQL_DIR:-$APP_ROOT/.sql}"
+SSL_CA_PATH="${SSL_CA_PATH:-$INSTALL_DIR/certs/ca.pem}"
 PORT=${PORT:-8000}
 HOSTNAME="${RENDER_EXTERNAL_HOSTNAME:-localhost}"
+DB_HOST="${DB_HOST:-127.0.0.1}"
+DB_PORT="${DB_PORT:-3306}"
+DB_USER="${DB_USER:-seafile}"
+DB_PASS="${DB_PASS:-}"
+DB_CCNET="${DB_NAME_CCNET:-ccnet_db}"
+DB_SEAFILE="${DB_NAME_SEAFILE:-seafile_db}"
+DB_SEAHUB="${DB_NAME_SEAHUB:-seahub_db}"
 
 # ── Environment variables for seafile ──
 export CCNET_CONF_DIR=$TOPDIR/ccnet
@@ -15,6 +25,8 @@ export SEAFILE_CONF_DIR=$TOPDIR/seafile-data
 export SEAFILE_CENTRAL_CONF_DIR=$TOPDIR/conf
 export SEAFILE_RPC_PIPE_PATH=$TOPDIR/seafile-data
 export SEAFILE_LOG_TO_STDOUT=true
+export SQL_DIR
+export SSL_CA_PATH
 
 # Add binaries and libraries to PATH/LD_LIBRARY_PATH
 export PATH="$INSTALL_DIR/bin:$PATH"
@@ -22,6 +34,20 @@ export LD_LIBRARY_PATH="$INSTALL_DIR/lib:${LD_LIBRARY_PATH:-}"
 
 # Add Python packages (pysearpc, seafile, seaserv) to PYTHONPATH
 export PYTHONPATH="$INSTALL_DIR/pypackages:$SEAHUB_DIR:$SEAHUB_DIR/thirdpart:${PYTHONPATH:-}"
+
+if [ "${START_VALIDATE_ONLY:-0}" = "1" ]; then
+    echo "Validation-only mode enabled. Running startup preflight checks..."
+    test -x "$INSTALL_DIR/bin/seaf-server"
+    test -x "$INSTALL_DIR/bin/fileserver"
+    test -f "$APP_ROOT/wsgi_proxy.py"
+    test -d "$SEAHUB_DIR"
+    if ! command -v gunicorn >/dev/null; then
+        echo "Validation note: gunicorn is not available in current PATH."
+        echo "This is expected only if pip dependencies were not installed in this environment."
+    fi
+    echo "Validation preflight passed."
+    exit 0
+fi
 
 # ── Cleanup on exit ──
 cleanup() {
@@ -38,15 +64,6 @@ if [ ! -f "$TOPDIR/conf/seafile.conf" ]; then
 
     mkdir -p $TOPDIR/ccnet $TOPDIR/seafile-data $TOPDIR/conf $TOPDIR/logs $TOPDIR/pids
 
-    # DB settings from environment
-    DB_HOST="${DB_HOST:-127.0.0.1}"
-    DB_PORT="${DB_PORT:-3306}"
-    DB_USER="${DB_USER:-seafile}"
-    DB_PASS="${DB_PASS:-}"
-    DB_CCNET="${DB_NAME_CCNET:-ccnet_db}"
-    DB_SEAFILE="${DB_NAME_SEAFILE:-seafile_db}"
-    DB_SEAHUB="${DB_NAME_SEAHUB:-seahub_db}"
-
     # ── Initialize DB schemas using Python (no mysql CLI needed) ──
     echo "Initializing database schemas..."
     python3 -c "
@@ -57,15 +74,18 @@ host = os.environ.get('DB_HOST', '127.0.0.1')
 port = int(os.environ.get('DB_PORT', '3306'))
 user = os.environ.get('DB_USER', 'seafile')
 passwd = os.environ.get('DB_PASS', '')
-ssl_ca = '/etc/ssl/mysql/ca.pem'
+ssl_ca = os.environ.get('SSL_CA_PATH', '')
 
 ssl_settings = {'ca': ssl_ca} if os.path.exists(ssl_ca) else None
 
 for db_name, sql_file in [
-    (os.environ.get('DB_NAME_CCNET', 'ccnet_db'), '/opt/sql/mysql/ccnet.sql'),
-    (os.environ.get('DB_NAME_SEAFILE', 'seafile_db'), '/opt/sql/mysql/seafile.sql'),
+    (os.environ.get('DB_NAME_CCNET', 'ccnet_db'), os.path.join(os.environ.get('SQL_DIR', ''), 'mysql/ccnet.sql')),
+    (os.environ.get('DB_NAME_SEAFILE', 'seafile_db'), os.path.join(os.environ.get('SQL_DIR', ''), 'mysql/seafile.sql')),
 ]:
     try:
+        if not os.path.exists(sql_file):
+            print(f'  Schema note for {db_name}: missing SQL file at {sql_file}')
+            continue
         conn = MySQLdb.connect(host=host, port=port, user=user, passwd=passwd,
                                db=db_name, charset='utf8', ssl=ssl_settings)
         cursor = conn.cursor()
@@ -101,7 +121,7 @@ DB = ${DB_CCNET}
 CONNECTION_CHARSET = utf8
 USE_SSL = true
 SKIP_VERIFY = false
-CA_PATH = /etc/ssl/mysql/ca.pem
+CA_PATH = ${SSL_CA_PATH}
 EOF
 
     # ── seafile.conf ──
@@ -120,7 +140,7 @@ db_name = ${DB_SEAFILE}
 connection_charset = utf8
 use_ssl = true
 skip_verify = false
-ca_path = /etc/ssl/mysql/ca.pem
+ca_path = ${SSL_CA_PATH}
 EOF
 
     # ── seahub_settings.py ──
@@ -143,7 +163,7 @@ DATABASES = {
         'PORT': '${DB_PORT}',
         'OPTIONS': {
             'charset': 'utf8mb4',
-            'ssl': {'ca': '/etc/ssl/mysql/ca.pem'},
+            'ssl': {'ca': '${SSL_CA_PATH}'},
         },
     }
 }
@@ -226,4 +246,4 @@ exec gunicorn wsgi_proxy:application \
     --timeout 1200 \
     --limit-request-line 8190 \
     --preload \
-    --chdir /opt
+    --chdir "$APP_ROOT"

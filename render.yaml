@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: starter
     buildCommand: chmod +x ./build.sh && ./build.sh
-    startCommand: /opt/cloudai/start.sh
+    startCommand: ./.cloudai/start.sh
     disk:
       name: cloudai-data
       mountPath: /data
@@ -16,7 +16,7 @@ services:
           name: cloudai
           property: host
       - key: PYTHON_VERSION
-        value: "3.11.6"
+        value: "3.10.14"
       # ── MySQL (use free Aiven/TiDB Cloud/PlanetScale) ──
       - key: DB_HOST
         sync: false
