@@ -94,10 +94,35 @@ echo "  ✓ Seahub copied to $SEAHUB_DIR"
 
 # ── 4. Install Python dependencies ──
 echo "=== [4/5] Installing Python dependencies ==="
+
+# Install native build dependencies needed by some pyproject.toml packages
+# (for example: python-ldap, mysqlclient, cffi/cairosvg stack) when wheels
+# are unavailable for the target platform.
+if command -v apt-get >/dev/null 2>&1; then
+  echo "  Detected apt-get; installing native build dependencies..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    python3-dev \
+    default-libmysqlclient-dev \
+    libldap2-dev \
+    libsasl2-dev \
+    libssl-dev \
+    libffi-dev \
+    libcairo2-dev \
+    libjpeg-dev \
+    zlib1g-dev
+  rm -rf /var/lib/apt/lists/*
+else
+  echo "  ⚠ apt-get not found; assuming build dependencies are preinstalled"
+fi
+
 pip install --upgrade pip setuptools wheel
 
 # All Python dependencies (consolidated in root requirements.txt)
-pip install --no-cache-dir -r requirements.txt
+pip install --no-cache-dir --prefer-binary -r requirements.txt
 echo "  ✓ Python dependencies installed"
 
 # ── 5. Setup directories and configs ──
