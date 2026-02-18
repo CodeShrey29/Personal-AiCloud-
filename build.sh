@@ -22,8 +22,56 @@ DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${TARBALL}"
 echo "  URL: $DOWNLOAD_URL"
 mkdir -p /tmp/cloudai-binaries
 
+apt_update_safe() {
+  # Keep apt resilient in restricted build environments (read-only apt dirs, etc.)
+  if touch /var/lib/apt/lists/.cloudai_rw_test 2>/dev/null; then
+    rm -f /var/lib/apt/lists/.cloudai_rw_test
+    mkdir -p /var/lib/apt/lists/partial
+    chown _apt:root /var/lib/apt/lists/partial 2>/dev/null || true
+    chmod 700 /var/lib/apt/lists/partial 2>/dev/null || true
+    apt-get update
+    return
+  fi
+
+  local state_dir="/tmp/apt-state/lists"
+  local cache_dir="/tmp/apt-cache/archives"
+  mkdir -p "$state_dir/partial" "$cache_dir/partial"
+  apt-get \
+    -o Dir::State::lists="$state_dir" \
+    -o Dir::Cache::archives="$cache_dir" \
+    update
+}
+
+apt_install_safe() {
+  if touch /var/lib/apt/lists/.cloudai_rw_test 2>/dev/null; then
+    rm -f /var/lib/apt/lists/.cloudai_rw_test
+    apt-get install -y --no-install-recommends "$@"
+    return
+  fi
+
+  local state_dir="/tmp/apt-state/lists"
+  local cache_dir="/tmp/apt-cache/archives"
+  mkdir -p "$state_dir/partial" "$cache_dir/partial"
+  apt-get \
+    -o Dir::State::lists="$state_dir" \
+    -o Dir::Cache::archives="$cache_dir" \
+    install -y --no-install-recommends "$@"
+}
+
 download_release_asset() {
   local output_file="$1"
+
+  # Optional local override for environments where GitHub release download is blocked.
+  local local_tarball="${LOCAL_BINARIES_TARBALL:-}"
+  if [ -n "$local_tarball" ]; then
+    if [ ! -f "$local_tarball" ]; then
+      echo "  ✗ LOCAL_BINARIES_TARBALL is set but file does not exist: $local_tarball"
+      return 1
+    fi
+    echo "  Using local binaries tarball: $local_tarball"
+    cp "$local_tarball" "$output_file"
+    return 0
+  fi
 
   # First try the public release URL (works for public repositories).
   if curl -fL --retry 3 --retry-delay 2 "$DOWNLOAD_URL" -o "$output_file"; then
@@ -34,7 +82,8 @@ download_release_asset() {
   local gh_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
   if [ -z "$gh_token" ]; then
     echo "  ✗ Failed to download binaries from public release URL."
-    echo "    If this repository is private, set GITHUB_TOKEN (or GH_TOKEN) in your deploy environment."
+    echo "    If this repository is private OR outbound GitHub access is restricted, set GITHUB_TOKEN (or GH_TOKEN)."
+    echo "    Alternatively, provide LOCAL_BINARIES_TARBALL=/path/to/cloudai-binaries.tar.gz"
     return 1
   fi
 
@@ -101,8 +150,11 @@ echo "=== [4/5] Installing Python dependencies ==="
 if command -v apt-get >/dev/null 2>&1; then
   echo "  Detected apt-get; installing native build dependencies..."
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install -y --no-install-recommends \
+  if ! apt_update_safe; then
+    echo "  ⚠ apt-get update failed (network/proxy/repo issue). Continuing; build may still succeed if deps are preinstalled."
+  fi
+
+  if ! apt_install_safe \
     build-essential \
     pkg-config \
     python3-dev \
@@ -113,8 +165,11 @@ if command -v apt-get >/dev/null 2>&1; then
     libffi-dev \
     libcairo2-dev \
     libjpeg-dev \
-    zlib1g-dev
-  rm -rf /var/lib/apt/lists/*
+    zlib1g-dev; then
+    echo "  ⚠ apt-get install failed (network/proxy/repo issue). Continuing; pip install will determine if deps are sufficient."
+  fi
+
+  rm -rf /var/lib/apt/lists/* /tmp/apt-state /tmp/apt-cache
 else
   echo "  ⚠ apt-get not found; assuming build dependencies are preinstalled"
 fi
